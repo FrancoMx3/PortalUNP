@@ -1,0 +1,3 @@
+Abre index.html en el navegador (Chrome/Edge).
+Las cuentas registradas se guardan en el navegador (localStorage).
+Necesita internet solo para la fuente Inter (opcional).
