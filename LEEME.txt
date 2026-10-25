@@ -1,9 +1,0 @@
-Abre index.html en el navegador (Chrome/Edge).
-Las cuentas registradas se guardan en el navegador (localStorage).
-Necesita internet para la fuente Inter y la libreria jsPDF.
-
-Flujo de registro:
-1. Registro Basico: Nombres, apellidos y correo personal.
-2. Pasarela de Pago: Simulacion de pago con barra de progreso.
-3. Registro Extendido: DNI, foto, documentos de identidad y contrasena.
-Al finalizar se genera un PDF con la ficha de registro.
