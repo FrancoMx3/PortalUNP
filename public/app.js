@@ -1,3 +1,41 @@
+/* ══════════════════════════════════════════════════════════════════
+   MAPA DE FUNCIONES QUE SE COMUNICAN CON LA BASE DE DATOS (MySQL)
+
+   Busca estas etiquetas con Ctrl+F para encontrarlas rápido:
+     [BD-ESCRIBE]  guarda datos nuevos en la base de datos
+     [BD-LEE]      consulta datos que ya están en la base de datos
+     [BD-SESIÓN]   solo maneja la sesión (cookies); no toca tablas
+     [BD-NÚCLEO]   función que realiza todas las llamadas al servidor
+     [SIN BD]      parece relacionada, pero NO envía nada al servidor
+
+   FUNCIÓN / BLOQUE                       ETIQUETA       ENDPOINT
+   ─────────────────────────────────────  ─────────────  ────────────────────────────
+   api()                                  [BD-NÚCLEO]    (todas las llamadas)
+   rf1 · submit  (Registro, paso 1)       [BD-ESCRIBE]   POST /api/registro/basico
+   runPaymentProgress() · nextStage()     [BD-ESCRIBE]   POST /api/registro/pago   
+   rf3 · submit  (Registro, paso 3)       [BD-ESCRIBE]   POST /api/registro/completar
+   lf  · submit  (Inicio de sesión)       [BD-LEE]       POST /api/login
+   setInterval() y carga inicial          [BD-LEE]       GET  /api/me
+   adaptar()                              [BD-LEE]       GET  /api/me/foto (imagen)
+   out · onclick (Cerrar sesión)          [BD-SESIÓN]    POST /api/logout
+
+   Donde:
+   api: Solicita al servidor y devuelve la respuesta en JSON. Si hay error, lanza un Error con .status y .message.
+
+   adaptar: Convierte la respuesta del servidor (datos leídos de MySQL) al objeto "s" que usan enter() y 
+    generatePDF(), y actualiza el tablero (rows) con el estado real de cada etapa.
+
+   runPaymentProgress: Simula la animación de pago y al final llama a nextStage() para registrar el pago en la base de datos.
+
+   rf1: Envía los datos básicos del postulante al servidor y guarda el borrador en la base de datos. Si ya pagó, salta al paso 3.
+
+   rf3: Envía los datos finales del postulante al servidor y completa el registro en la base de datos. Genera el PDF con generatePDF().
+
+   setInterval y carga inicial: Cada 30 segundos consulta al servidor el estado de las etapas y actualiza el tablero. 
+    Al cargar la página, si hay sesión abierta entra directo al portal; si no, muestra el login.
+
+   ══════════════════════════════════════════════════════════════════ */
+
 var $ = function (i) {
     return document.getElementById(i);
 };
@@ -8,7 +46,12 @@ var MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct
 
 var sesion = null; // datos del postulante con la sesión abierta
 
-/* Llamada a la API: lanza un Error con .status y .message legible */
+/* ══════════════════════════════════════════════════════════════════
+   [BD-NÚCLEO] api(url, opts)
+   Única función que hace fetch() al servidor. Todas las etiquetas
+   [BD-ESCRIBE], [BD-LEE] y [BD-SESIÓN] de este archivo pasan por aquí.
+   Si el servidor responde con error, lanza un Error con .status y .message.
+   ══════════════════════════════════════════════════════════════════ */
 function api(url, opts) {
     return fetch(url, Object.assign({ credentials: "same-origin" }, opts)).then(
         function (r) {
@@ -48,7 +91,7 @@ function sinTildes(t) {
     return t.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }
 
-/* Convierte la respuesta del servidor al objeto "s" que usan enter() y generatePDF(),
+/* [BD-LEE] Convierte la respuesta del servidor (datos leídos de MySQL) al objeto "s" que usan enter() y generatePDF(),
    y actualiza el tablero (rows) con el estado real de cada etapa. */
 function adaptar(d) {
     var p = d.postulante;
@@ -74,7 +117,7 @@ function adaptar(d) {
         conv: p.convocatoria,
         area: p.area,
         turno: p.turno,
-        foto: "/api/me/foto?u=" + p.id,
+        foto: "/api/me/foto?u=" + p.id, // [BD-LEE] el navegador pide la foto guardada en uploads/
         dniVerified: rows[2][4] === "Validado",
         payRef: pg ? pg.referencia : "",
         payDate: pg ? fecha(pg.fecha) : "",
@@ -163,6 +206,13 @@ function wizardStep(step) {
     });
 }
 
+/* ══════════════════════════════════════════════════════════════════
+   [BD-LEE] INICIO DE SESIÓN
+   Endpoint : POST /api/login
+   Envía    : email y password (JSON)
+   Tabla    : postulantes (solo consulta: compara la contraseña cifrada)
+   Servidor : server/routes/auth.js → router.post('/login')
+   ══════════════════════════════════════════════════════════════════ */
 $("lf").addEventListener("submit", function (e) {
     e.preventDefault();
 
@@ -198,6 +248,7 @@ $("lf").addEventListener("submit", function (e) {
     var btn = $("lf").querySelector("button[type=submit]");
     btn.disabled = true;
 
+    // [BD-LEE] ← llamada al servidor: consulta la cuenta en MySQL
     api("/api/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -271,6 +322,12 @@ function enter(s) {
     render();
 }
 
+/* ══════════════════════════════════════════════════════════════════
+   [BD-SESIÓN] CERRAR SESIÓN
+   Endpoint : POST /api/logout
+   No modifica tablas: solo borra las cookies de sesión.
+   Servidor : server/routes/auth.js → router.post('/logout')
+   ══════════════════════════════════════════════════════════════════ */
 $("out").onclick = function () {
     api("/api/logout", { method: "POST" }).catch(function () { });
     sesion = null;
@@ -422,7 +479,12 @@ function render() {
         });
 }
 
-// Refresca el estado desde el servidor cada 30 s mientras la sesión esté abierta
+/* ══════════════════════════════════════════════════════════════════
+   [BD-LEE] ACTUALIZACIÓN AUTOMÁTICA DEL TABLERO (cada 30 s)
+   Endpoint : GET /api/me
+   Tablas   : postulantes, postulante_etapas, etapas, pagos (solo lectura)
+   Servidor : server/routes/perfil.js → router.get('/me')
+   ══════════════════════════════════════════════════════════════════ */
 setInterval(function () {
     if ($("app").classList.contains("hidden")) return;
 
@@ -440,7 +502,11 @@ setInterval(function () {
         });
 }, 30000);
 
-// Si ya había una sesión abierta (recarga de página), entrar directo
+/* ══════════════════════════════════════════════════════════════════
+   [BD-LEE] RECUPERAR SESIÓN AL CARGAR LA PÁGINA
+   Endpoint : GET /api/me   (mismos datos que arriba)
+   Si hay sesión abierta entra directo al portal; si no, muestra el login.
+   ══════════════════════════════════════════════════════════════════ */
 api("/api/me")
     .then(function (d) {
         enter(adaptar(d));
@@ -538,6 +604,14 @@ $("rem").oninput = function () {
     if ($("rem").value) vEmail();
 };
 
+/* ══════════════════════════════════════════════════════════════════
+   [BD-ESCRIBE] REGISTRO · PASO 1 · Datos básicos
+   Endpoint : POST /api/registro/basico
+   Envía    : nombres, apellidos, emailPersonal (JSON)
+   Tablas   : postulantes (INSERT del borrador)
+              postulante_etapas (P01 → Confirmado)
+   Servidor : server/routes/registro.js → "PASO 1"
+   ══════════════════════════════════════════════════════════════════ */
 $("rf1").addEventListener("submit", function (e) {
     e.preventDefault();
 
@@ -550,6 +624,7 @@ $("rf1").addEventListener("submit", function (e) {
     var btn = $("rf1").querySelector("button[type=submit]");
     btn.disabled = true;
 
+    // [BD-ESCRIBE] ← llamada al servidor: guarda el paso 1 en MySQL
     api("/api/registro/basico", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -602,6 +677,12 @@ $("pcvv").oninput = function () {
     $("pcvv").value = $("pcvv").value.replace(/\D/g, "");
 };
 
+/* ══════════════════════════════════════════════════════════════════
+   [SIN BD] Botón "Procesar pago"
+   Solo valida el formato de la tarjeta y arranca la animación de progreso.
+   Los datos de tarjeta NUNCA se envían ni se guardan. El registro del pago
+   en la base de datos ocurre al final de la animación (ver nextStage()).
+   ══════════════════════════════════════════════════════════════════ */
 $("payBtn").onclick = function () {
     var card = $("pcard").value.replace(/\s/g, ""),
         exp = $("pexp").value,
@@ -663,6 +744,15 @@ function reiniciarPago() {
     });
 }
 
+/* ══════════════════════════════════════════════════════════════════
+   [BD-ESCRIBE] REGISTRO · PASO 2 · Pago de inscripción
+   Se ejecuta al terminar la animación (dentro de nextStage()).
+   Endpoint : POST /api/registro/pago   (sin cuerpo: no envía datos de tarjeta)
+   Tablas   : pagos (INSERT: referencia, monto, estado)
+              postulante_etapas (P02 → Validado)
+   El monto y la referencia los define el SERVIDOR, no este archivo.
+   Servidor : server/routes/registro.js → "PASO 2"
+   ══════════════════════════════════════════════════════════════════ */
 function runPaymentProgress() {
     var stages = [
         { id: "ps1", label: "Conexión con pasarela", pct: 25 },
@@ -677,6 +767,7 @@ function runPaymentProgress() {
         if (current >= stages.length) {
             $("pstatus").textContent = "Registrando el pago...";
 
+            // [BD-ESCRIBE] ← llamada al servidor: guarda el pago en MySQL
             // No se envían datos de tarjeta: el servidor fija el monto y genera la referencia
             api("/api/registro/pago", { method: "POST" })
                 .then(function (p) {
@@ -733,6 +824,16 @@ $("rp").oninput = function () {
     if ($("rp").value) vP();
 };
 
+/* ══════════════════════════════════════════════════════════════════
+   [BD-ESCRIBE] REGISTRO · PASO 3 · Verificación y creación de la cuenta
+   Endpoint : POST /api/registro/completar
+   Envía    : FormData → dni, telefono, password, foto, dni_frente, dni_reverso
+   Tablas   : postulantes (UPDATE: DNI, teléfono, correo institucional,
+                           contraseña cifrada, nombres de los archivos)
+              postulante_etapas (P03 → Confirmado)
+   Archivos : las 3 imágenes se guardan en la carpeta uploads/
+   Servidor : server/routes/registro.js → "PASO 3"
+   ══════════════════════════════════════════════════════════════════ */
 $("rf3").addEventListener("submit", function (e) {
     e.preventDefault();
 
@@ -784,6 +885,7 @@ $("rf3").addEventListener("submit", function (e) {
     var btn = $("rf3").querySelector("button[type=submit]");
     btn.disabled = true;
 
+    // [BD-ESCRIBE] ← llamada al servidor: completa el registro en MySQL
     api("/api/registro/completar", { method: "POST", body: fd })
         .then(function (d) {
             var s = adaptar(d);
@@ -972,6 +1074,7 @@ function generatePDF(s) {
     doc.save("ficha_registro_UNP_" + s.dni + ".pdf");
 }
 
+// [SIN BD] Genera el PDF en el navegador (jsPDF) con los datos ya cargados en "sesion".
 $("pdfBtn").onclick = function () {
     if (sesion) {
         generatePDF(sesion);
