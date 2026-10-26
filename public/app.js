@@ -2,71 +2,86 @@ var $ = function (i) {
     return document.getElementById(i);
 };
 
-var DB_KEYS = {
-    ACCOUNTS: "unp_cuentas_v2",
-    PAYMENTS: "unp_pagos_v1",
-    SESSIONS: "unp_sesiones_v1"
-};
+/* ---------- Conexión con el servidor (reemplaza el almacenamiento en el navegador) ---------- */
 
-var DAO = {
-    _read: function (key) {
-        try {
-            return JSON.parse(localStorage.getItem(key) || "{}");
-        } catch (e) {
-            return {};
-        }
-    },
+var MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
 
-    _write: function (key, data) {
-        try {
-            localStorage.setItem(key, JSON.stringify(data));
-        } catch (e) { }
-    },
+var sesion = null; // datos del postulante con la sesión abierta
 
-    accounts: {
-        findAll: function () {
-            return DAO._read(DB_KEYS.ACCOUNTS);
-        },
-        findByEmail: function (email) {
-            var all = DAO.accounts.findAll();
-            return all[email] || null;
-        },
-        insert: function (email, record) {
-            var all = DAO.accounts.findAll();
-            all[email] = record;
-            DAO._write(DB_KEYS.ACCOUNTS, all);
-        },
-        update: function (email, fields) {
-            var all = DAO.accounts.findAll();
-            if (all[email]) {
-                for (var k in fields) {
-                    if (fields.hasOwnProperty(k)) {
-                        all[email][k] = fields[k];
+/* Llamada a la API: lanza un Error con .status y .message legible */
+function api(url, opts) {
+    return fetch(url, Object.assign({ credentials: "same-origin" }, opts)).then(
+        function (r) {
+            return r
+                .json()
+                .catch(function () {
+                    return {};
+                })
+                .then(function (data) {
+                    if (!r.ok) {
+                        var err = new Error(data.error || "No se pudo completar la operación.");
+                        err.status = r.status;
+                        throw err;
                     }
-                }
-                DAO._write(DB_KEYS.ACCOUNTS, all);
-            }
+                    return data;
+                });
         },
-        exists: function (email) {
-            return !!DAO.accounts.findByEmail(email);
+        function () {
+            var err = new Error("No hay conexión con el servidor.");
+            err.status = 0;
+            throw err;
         }
-    },
+    );
+}
 
-    payments: {
-        findAll: function () {
-            return DAO._read(DB_KEYS.PAYMENTS);
-        },
-        findByEmail: function (email) {
-            var all = DAO.payments.findAll();
-            return all[email] || null;
-        },
-        insert: function (email, record) {
-            var all = DAO.payments.findAll();
-            all[email] = record;
-            DAO._write(DB_KEYS.PAYMENTS, all);
+function fecha(s) {
+    if (!s) return "—";
+    var p = s.split("-");
+    return +p[2] + " " + MESES[+p[1] - 1] + " " + p[0];
+}
+
+function telFmt(t) {
+    return t ? t.replace(/(\d{3})(\d{3})(\d{3})/, "$1 $2 $3") : "—";
+}
+
+function sinTildes(t) {
+    return t.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
+/* Convierte la respuesta del servidor al objeto "s" que usan enter() y generatePDF(),
+   y actualiza el tablero (rows) con el estado real de cada etapa. */
+function adaptar(d) {
+    var p = d.postulante;
+
+    d.etapas.forEach(function (e) {
+        for (var i = 0; i < rows.length; i++) {
+            if (rows[i][0] === e.codigo) {
+                rows[i][3] = e.fecha ? fecha(e.fecha) : "—";
+                rows[i][4] = e.estado;
+            }
         }
-    }
-};
+    });
+
+    var pg = d.pago;
+
+    return {
+        dni: p.dni,
+        nombres: p.nombres,
+        apellidos: p.apellidos,
+        email: p.email,
+        emailPersonal: p.emailPersonal,
+        tel: telFmt(p.telefono),
+        conv: p.convocatoria,
+        area: p.area,
+        turno: p.turno,
+        foto: "/api/me/foto?u=" + p.id,
+        dniVerified: rows[2][4] === "Validado",
+        payRef: pg ? pg.referencia : "",
+        payDate: pg ? fecha(pg.fecha) : "",
+        payMonto: pg ? pg.monto : "",
+        regDate: rows[2][3]
+    };
+}
 
 var regData = {};
 
@@ -180,23 +195,24 @@ $("lf").addEventListener("submit", function (e) {
 
     if (!ok) return;
 
-    var a = DAO.accounts.findByEmail(em);
+    var btn = $("lf").querySelector("button[type=submit]");
+    btn.disabled = true;
 
-    if (!a) {
-        fld(
-            $("emw"),
-            $("eme"),
-            "No encontramos esa cuenta. Regístrate en la pestaña \"Registro\"."
-        );
-        return;
-    }
-
-    if (a.pw !== pw) {
-        fld($("pww"), $("pwe"), "Contraseña incorrecta.");
-        return;
-    }
-
-    enter(a.s);
+    api("/api/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: em, password: pw })
+    })
+        .then(function (d) {
+            enter(adaptar(d));
+        })
+        .catch(function (err) {
+            if (err.status === 401) fld($("pww"), $("pwe"), err.message);
+            else toast(err.message);
+        })
+        .then(function () {
+            btn.disabled = false;
+        });
 });
 
 $("forgot").onclick = function () {
@@ -206,6 +222,8 @@ $("forgot").onclick = function () {
 };
 
 function enter(s) {
+    sesion = s;
+
     $("login").classList.add("hidden");
     $("app").classList.remove("hidden");
 
@@ -254,6 +272,10 @@ function enter(s) {
 }
 
 $("out").onclick = function () {
+    api("/api/logout", { method: "POST" }).catch(function () { });
+    sesion = null;
+    regData = {};
+
     $("app").classList.add("hidden");
     $("login").classList.remove("hidden");
 
@@ -266,7 +288,11 @@ $("out").onclick = function () {
 
 $("bell").onclick = function () {
     toast(
-        "Tu pago fue validado. El ticket se emitirá al confirmarse."
+        rows[3][4] !== "Pendiente"
+            ? "Tu ticket ya está disponible."
+            : rows[1][4] === "Validado"
+                ? "Tu pago fue validado. El ticket se emitirá al confirmarse."
+                : "Aún no registramos el pago de tu inscripción."
     );
 };
 
@@ -396,17 +422,36 @@ function render() {
         });
 }
 
+// Refresca el estado desde el servidor cada 30 s mientras la sesión esté abierta
 setInterval(function () {
-    if (!$("app").classList.contains("hidden")) {
-        render();
-    }
+    if ($("app").classList.contains("hidden")) return;
+
+    api("/api/me")
+        .then(function (d) {
+            var y = window.scrollY;
+            enter(adaptar(d));
+            window.scrollTo(0, y);
+        })
+        .catch(function (err) {
+            if (err.status === 401) {
+                $("out").onclick();
+                toast("Tu sesión expiró. Inicia sesión nuevamente.");
+            }
+        });
 }, 30000);
+
+// Si ya había una sesión abierta (recarga de página), entrar directo
+api("/api/me")
+    .then(function (d) {
+        enter(adaptar(d));
+    })
+    .catch(function () { });
 
 var RL = /^[a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s]+$/;
 
 function gen() {
-    var n = $("rn").value.toLowerCase().trim(),
-        a = $("ra").value.toLowerCase().trim(),
+    var n = sinTildes($("rn").value.toLowerCase().trim()),
+        a = sinTildes($("ra").value.toLowerCase().trim()),
         d = $("rd").value.trim();
 
     $("ge").textContent =
@@ -502,15 +547,40 @@ $("rf1").addEventListener("submit", function (e) {
 
     if (!(a && b && c)) return;
 
-    regData.nombres = cap($("rn").value);
-    regData.apellidos = cap($("ra").value);
-    regData.emailPersonal = $("rem").value.trim().toLowerCase();
+    var btn = $("rf1").querySelector("button[type=submit]");
+    btn.disabled = true;
 
-    var now = new Date();
-    rows[0][3] = now.toLocaleDateString("es-PE", { day: "2-digit", month: "short", year: "numeric" });
-    rows[0][4] = "Confirmado";
+    api("/api/registro/basico", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            nombres: $("rn").value,
+            apellidos: $("ra").value,
+            emailPersonal: $("rem").value.trim().toLowerCase()
+        })
+    })
+        .then(function (d) {
+            regData.nombres = cap($("rn").value);
+            regData.apellidos = cap($("ra").value);
+            regData.emailPersonal = $("rem").value.trim().toLowerCase();
 
-    wizardStep(2);
+            if (d.pagado) {
+                toast("Ya registramos tu pago. Completa tu verificación.");
+                wizardStep(3);
+            } else {
+                wizardStep(2);
+            }
+        })
+        .catch(function (err) {
+            toast(err.message);
+
+            if (err.status === 409 && /Inicia sesión/.test(err.message)) {
+                lt(1);
+            }
+        })
+        .then(function () {
+            btn.disabled = false;
+        });
 });
 
 $("pcard").oninput = function () {
@@ -577,6 +647,22 @@ $("payBtn").onclick = function () {
     }, 600);
 };
 
+function reiniciarPago() {
+    document.querySelector(".pay-container").classList.remove("hidden");
+    $("payProgress").classList.add("hidden");
+
+    $("payBtn").disabled = false;
+    $("payBtn").textContent = "Procesar pago S/ 400.00";
+
+    $("pbar").style.width = "0%";
+    $("pstatus").textContent = "Iniciando...";
+    $("pstatus").style.color = "";
+
+    ["ps1", "ps2", "ps3", "ps4"].forEach(function (id) {
+        $(id).querySelector("td:last-child").innerHTML = '<span class="chip c-Pendiente">Pendiente</span>';
+    });
+}
+
 function runPaymentProgress() {
     var stages = [
         { id: "ps1", label: "Conexión con pasarela", pct: 25 },
@@ -589,27 +675,31 @@ function runPaymentProgress() {
 
     function nextStage() {
         if (current >= stages.length) {
-            $("pstatus").textContent = "Pago procesado exitosamente";
-            $("pstatus").style.color = "var(--ok)";
+            $("pstatus").textContent = "Registrando el pago...";
 
-            var now = new Date();
+            // No se envían datos de tarjeta: el servidor fija el monto y genera la referencia
+            api("/api/registro/pago", { method: "POST" })
+                .then(function (p) {
+                    $("pstatus").textContent = "Pago procesado exitosamente";
+                    $("pstatus").style.color = "var(--ok)";
 
-            regData.payDate = now.toLocaleDateString("es-PE", { day: "2-digit", month: "short", year: "numeric" });
-            regData.payRef = "TXN-" + now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0") + String(now.getDate()).padStart(2, "0") + "-" + Math.floor(Math.random() * 9000 + 1000);
+                    regData.payDate = fecha(p.fecha);
+                    regData.payRef = p.referencia;
 
-            DAO.payments.insert(regData.emailPersonal, {
-                date: regData.payDate,
-                ref: regData.payRef,
-                amount: 400,
-                status: "Validado"
-            });
+                    $("pcard").value = "";
+                    $("pexp").value = "";
+                    $("pcvv").value = "";
 
-            rows[1][3] = regData.payDate;
-            rows[1][4] = "Validado";
+                    setTimeout(function () {
+                        wizardStep(3);
+                    }, 1200);
+                })
+                .catch(function (err) {
+                    toast(err.message);
+                    reiniciarPago();
 
-            setTimeout(function () {
-                wizardStep(3);
-            }, 1200);
+                    if (err.status === 401) wizardStep(1);
+                });
 
             return;
         }
@@ -642,47 +732,6 @@ $("rt").oninput = vT;
 $("rp").oninput = function () {
     if ($("rp").value) vP();
 };
-
-function foto(file, cb) {
-    var r = new FileReader();
-
-    r.onerror = function () {
-        cb("");
-    };
-
-    r.onload = function () {
-        var im = new Image();
-
-        im.onerror = function () {
-            cb("");
-        };
-
-        im.onload = function () {
-            var c = document.createElement("canvas"),
-                m = Math.min(im.width, im.height);
-
-            c.width = c.height = 160;
-
-            c.getContext("2d").drawImage(
-                im,
-                (im.width - m) / 2,
-                (im.height - m) / 2,
-                m,
-                m,
-                0,
-                0,
-                160,
-                160
-            );
-
-            cb(c.toDataURL("image/jpeg", 0.8));
-        };
-
-        im.src = r.result;
-    };
-
-    r.readAsDataURL(file);
-}
 
 $("rf3").addEventListener("submit", function (e) {
     e.preventDefault();
@@ -724,72 +773,53 @@ $("rf3").addEventListener("submit", function (e) {
 
     var em = $("ge").textContent;
 
-    if (DAO.accounts.exists(em)) {
-        toast(
-            "Ya existe una cuenta con " +
-            em +
-            ". Inicia sesión."
-        );
+    var fd = new FormData();
+    fd.append("dni", $("rd").value);
+    fd.append("telefono", $("rt").value);
+    fd.append("password", $("rp").value);
+    fd.append("foto", $("rph").files[0]);
+    fd.append("dni_frente", $("rdni_front").files[0]);
+    fd.append("dni_reverso", $("rdni_back").files[0]);
 
-        $("em").value = em;
-        lt(1);
+    var btn = $("rf3").querySelector("button[type=submit]");
+    btn.disabled = true;
 
-        return;
-    }
+    api("/api/registro/completar", { method: "POST", body: fd })
+        .then(function (d) {
+            var s = adaptar(d);
 
-    foto($("rph").files[0], function (img) {
-        var tv = $("rt").value;
+            $("rf1").reset();
+            $("rf3").reset();
 
-        var now = new Date();
+            ["rd", "rn", "ra", "rt", "rp", "rem"].forEach(function (i) {
+                $(i).classList.remove("ok", "err");
+            });
 
-        var s = {
-            dni: $("rd").value,
-            nombres: regData.nombres,
-            apellidos: regData.apellidos,
-            email: em,
-            emailPersonal: regData.emailPersonal,
-            tel: tv
-                ? tv.replace(
-                    /(\d{3})(\d{3})(\d{3})/,
-                    "$1 $2 $3"
-                )
-                : "—",
-            conv: "Admisión 2027-I",
-            area: "Por elegir",
-            turno: "Por elegir",
-            foto: img,
-            dniVerified: false,
-            payRef: regData.payRef,
-            payDate: regData.payDate,
-            regDate: now.toLocaleDateString("es-PE", { day: "2-digit", month: "short", year: "numeric" })
-        };
+            gen();
+            regData = {};
+            reiniciarPago();
 
-        rows[2][3] = s.regDate;
-        rows[2][4] = "Confirmado";
+            generatePDF(s);
 
-        DAO.accounts.insert(em, {
-            pw: $("rp").value,
-            s: s
+            toast("Registro exitoso. Tu correo institucional: " + s.email);
+
+            enter(s);
+        })
+        .catch(function (err) {
+            toast(err.message);
+
+            if (err.status === 409) {
+                $("em").value = em;
+                lt(1);
+            } else if (err.status === 403) {
+                wizardStep(2);
+            } else if (err.status === 401) {
+                wizardStep(1);
+            }
+        })
+        .then(function () {
+            btn.disabled = false;
         });
-
-        $("rf1").reset();
-        $("rf3").reset();
-
-        ["rd", "rn", "ra", "rt", "rp", "rem"].forEach(function (i) {
-            $(i).classList.remove("ok", "err");
-        });
-
-        gen();
-
-        generatePDF(s);
-
-        toast(
-            "Registro exitoso. Tu correo institucional: " +
-            em
-        );
-
-        enter(s);
-    });
 });
 
 function generatePDF(s) {
@@ -871,7 +901,7 @@ function generatePDF(s) {
     var payFields = [
         ["Referencia", s.payRef || "—"],
         ["Fecha de pago", s.payDate || "—"],
-        ["Monto", "S/ 400.00"],
+        ["Monto", "S/ " + (s.payMonto || "400.00")],
         ["Estado", "Validado"]
     ];
 
@@ -943,18 +973,9 @@ function generatePDF(s) {
 }
 
 $("pdfBtn").onclick = function () {
-    var sn = $("sn").textContent;
-    if (sn && sn !== "—") {
-        var allAccounts = DAO.accounts.findAll();
-        for (var email in allAccounts) {
-            if (allAccounts.hasOwnProperty(email)) {
-                var acc = allAccounts[email];
-                if (acc.s && (acc.s.nombres + " " + acc.s.apellidos) === sn) {
-                    generatePDF(acc.s);
-                    return;
-                }
-            }
-        }
+    if (sesion) {
+        generatePDF(sesion);
+    } else {
+        toast("No se encontraron datos para generar el PDF.");
     }
-    toast("No se encontraron datos para generar el PDF.");
 };
