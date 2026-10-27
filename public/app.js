@@ -1,4 +1,4 @@
-/* ══════════════════════════════════════════════════════════════════
+ /* ══════════════════════════════════════════════════════════════════
    MAPA DE FUNCIONES QUE SE COMUNICAN CON LA BASE DE DATOS (MySQL)
 
    Busca estas etiquetas con Ctrl+F para encontrarlas rápido:

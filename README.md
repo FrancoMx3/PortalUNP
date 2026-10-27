@@ -1,5 +1,15 @@
 # PortalUNP
 Grupo Curso Integrador I: Sistemas Software
+Integrantes:
+- Tavara García Jesús
+- Rivas Rivas Ricardo Emmanuel
+- Ivan Yamil Jaramillo Nuñez
+- Franco Manuel Mendoza Mendoza
+- Aldair Emmanuel Alvarado Facundo
+
+
+
+
 
 Portal de admisión con **Node.js + Express + MySQL**. El frontend (HTML/CSS/JS) está en `public/`.
 
