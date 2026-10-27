@@ -1,16 +1,11 @@
--- Tablas del Portal UNP v2 (la base de datos la crea "npm run db:init")
--- Flujo: 1) datos básicos  2) pago  3) registro completo (DNI, fotos, contraseña)
-
 CREATE TABLE IF NOT EXISTS postulantes (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  -- Paso 1
   nombres VARCHAR(80) NOT NULL,
   apellidos VARCHAR(80) NOT NULL,
   email_personal VARCHAR(120) NOT NULL,
-  -- Paso 3 (NULL hasta que el postulante completa su registro)
   dni CHAR(8) NULL,
   telefono CHAR(9) NULL,
-  email VARCHAR(120) NULL,              -- correo institucional
+  email VARCHAR(120) NULL,
   password_hash VARCHAR(100) NULL,
   foto_archivo VARCHAR(100) NULL,
   dni_frente_archivo VARCHAR(100) NULL,
@@ -26,7 +21,6 @@ CREATE TABLE IF NOT EXISTS postulantes (
   UNIQUE KEY uq_postulantes_email (email)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Pagos (nunca se guardan datos de tarjeta)
 CREATE TABLE IF NOT EXISTS pagos (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   postulante_id INT UNSIGNED NOT NULL,
@@ -41,7 +35,6 @@ CREATE TABLE IF NOT EXISTS pagos (
     REFERENCES postulantes (id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Catálogo de etapas del proceso (P01..P04)
 CREATE TABLE IF NOT EXISTS etapas (
   codigo CHAR(3) PRIMARY KEY,
   orden TINYINT UNSIGNED NOT NULL,
@@ -49,7 +42,6 @@ CREATE TABLE IF NOT EXISTS etapas (
   descripcion VARCHAR(160) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Estado de cada etapa para cada postulante
 CREATE TABLE IF NOT EXISTS postulante_etapas (
   postulante_id INT UNSIGNED NOT NULL,
   etapa_codigo CHAR(3) NOT NULL,
@@ -64,6 +56,7 @@ CREATE TABLE IF NOT EXISTS postulante_etapas (
 
 INSERT IGNORE INTO etapas (codigo, orden, nombre, descripcion) VALUES
   ('P01', 1, 'Registro básico',                  'Nombres, apellidos y correo personal'),
-  ('P02', 2, 'Pago de inscripción',              'Tasa procesada por pasarela segura'),
+  ('P02', 2, 'Pago de inscripción',              'Pago de inscripción simulado'),
   ('P03', 3, 'Registro completo y verificación', 'DNI, foto y datos de identidad'),
   ('P04', 4, 'Confirmación y ticket digital',    'QR, aula, pabellón y puerta de ingreso');
+UPDATE etapas SET descripcion = 'Pago de inscripción simulado' WHERE codigo = 'P02';

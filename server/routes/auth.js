@@ -7,7 +7,7 @@ const { cargarPerfil } = require('../lib/perfil');
 const { iniciarSesion, COOKIE } = require('../lib/session');
 
 const router = express.Router();
-const DUMMY_HASH = bcrypt.hashSync('contrasena-falsa', 10); // evita revelar por tiempo si el correo existe
+const DUMMY_HASH = bcrypt.hashSync('contrasena-falsa', 10);
 
 router.post('/login', limiters.login, async (req, res, next) => {
   try {

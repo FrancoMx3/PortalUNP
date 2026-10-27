@@ -8,7 +8,7 @@ module.exports = {
   PORT: Number(process.env.PORT) || 3000,
   PUBLIC_DIR: path.join(ROOT, 'public'),
   UPLOADS_DIR: path.join(ROOT, 'uploads'),
-  MONTO_INSCRIPCION: 400.0, // S/ (el monto lo define el servidor, nunca el navegador)
+  MONTO_INSCRIPCION: 400.0,
   JWT_SECRET: process.env.JWT_SECRET || '',
   IS_PROD: process.env.NODE_ENV === 'production',
   DB: {

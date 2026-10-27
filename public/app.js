@@ -1,57 +1,13 @@
-/* ══════════════════════════════════════════════════════════════════
-   MAPA DE FUNCIONES QUE SE COMUNICAN CON LA BASE DE DATOS (MySQL)
-
-   Busca estas etiquetas con Ctrl+F para encontrarlas rápido:
-     [BD-ESCRIBE]  guarda datos nuevos en la base de datos
-     [BD-LEE]      consulta datos que ya están en la base de datos
-     [BD-SESIÓN]   solo maneja la sesión (cookies); no toca tablas
-     [BD-NÚCLEO]   función que realiza todas las llamadas al servidor
-     [SIN BD]      parece relacionada, pero NO envía nada al servidor
-
-   FUNCIÓN / BLOQUE                       ETIQUETA       ENDPOINT
-   ─────────────────────────────────────  ─────────────  ────────────────────────────
-   api()                                  [BD-NÚCLEO]    (todas las llamadas)
-   rf1 · submit  (Registro, paso 1)       [BD-ESCRIBE]   POST /api/registro/basico
-   runPaymentProgress() · nextStage()     [BD-ESCRIBE]   POST /api/registro/pago   
-   rf3 · submit  (Registro, paso 3)       [BD-ESCRIBE]   POST /api/registro/completar
-   lf  · submit  (Inicio de sesión)       [BD-LEE]       POST /api/login
-   setInterval() y carga inicial          [BD-LEE]       GET  /api/me
-   adaptar()                              [BD-LEE]       GET  /api/me/foto (imagen)
-   out · onclick (Cerrar sesión)          [BD-SESIÓN]    POST /api/logout
-
-   Donde:
-   api: Solicita al servidor y devuelve la respuesta en JSON. Si hay error, lanza un Error con .status y .message.
-
-   adaptar: Convierte la respuesta del servidor (datos leídos de MySQL) al objeto "s" que usan enter() y 
-    generatePDF(), y actualiza el tablero (rows) con el estado real de cada etapa.
-
-   runPaymentProgress: Simula la animación de pago y al final llama a nextStage() para registrar el pago en la base de datos.
-
-   rf1: Envía los datos básicos del postulante al servidor y guarda el borrador en la base de datos. Si ya pagó, salta al paso 3.
-
-   rf3: Envía los datos finales del postulante al servidor y completa el registro en la base de datos. Genera el PDF con generatePDF().
-
-   setInterval y carga inicial: Cada 30 segundos consulta al servidor el estado de las etapas y actualiza el tablero. 
-    Al cargar la página, si hay sesión abierta entra directo al portal; si no, muestra el login.
-
-   ══════════════════════════════════════════════════════════════════ */
 
 var $ = function (i) {
     return document.getElementById(i);
 };
 
-/* ---------- Conexión con el servidor (reemplaza el almacenamiento en el navegador) ---------- */
 
 var MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
 
-var sesion = null; // datos del postulante con la sesión abierta
+var sesion = null;
 
-/* ══════════════════════════════════════════════════════════════════
-   [BD-NÚCLEO] api(url, opts)
-   Única función que hace fetch() al servidor. Todas las etiquetas
-   [BD-ESCRIBE], [BD-LEE] y [BD-SESIÓN] de este archivo pasan por aquí.
-   Si el servidor responde con error, lanza un Error con .status y .message.
-   ══════════════════════════════════════════════════════════════════ */
 function api(url, opts) {
     return fetch(url, Object.assign({ credentials: "same-origin" }, opts)).then(
         function (r) {
@@ -91,14 +47,14 @@ function sinTildes(t) {
     return t.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }
 
-/* [BD-LEE] Convierte la respuesta del servidor (datos leídos de MySQL) al objeto "s" que usan enter() y generatePDF(),
-   y actualiza el tablero (rows) con el estado real de cada etapa. */
 function adaptar(d) {
     var p = d.postulante;
 
     d.etapas.forEach(function (e) {
         for (var i = 0; i < rows.length; i++) {
             if (rows[i][0] === e.codigo) {
+                rows[i][1] = e.nombre;
+                rows[i][2] = e.descripcion;
                 rows[i][3] = e.fecha ? fecha(e.fecha) : "—";
                 rows[i][4] = e.estado;
             }
@@ -117,12 +73,10 @@ function adaptar(d) {
         conv: p.convocatoria,
         area: p.area,
         turno: p.turno,
-        foto: "/api/me/foto?u=" + p.id, // [BD-LEE] el navegador pide la foto guardada en uploads/
-        dniVerified: rows[2][4] === "Validado",
+        foto: "/api/me/foto?u=" + p.id,
         payRef: pg ? pg.referencia : "",
         payDate: pg ? fecha(pg.fecha) : "",
         payMonto: pg ? pg.monto : "",
-        regDate: rows[2][3]
     };
 }
 
@@ -206,13 +160,6 @@ function wizardStep(step) {
     });
 }
 
-/* ══════════════════════════════════════════════════════════════════
-   [BD-LEE] INICIO DE SESIÓN
-   Endpoint : POST /api/login
-   Envía    : email y password (JSON)
-   Tabla    : postulantes (solo consulta: compara la contraseña cifrada)
-   Servidor : server/routes/auth.js → router.post('/login')
-   ══════════════════════════════════════════════════════════════════ */
 $("lf").addEventListener("submit", function (e) {
     e.preventDefault();
 
@@ -248,7 +195,6 @@ $("lf").addEventListener("submit", function (e) {
     var btn = $("lf").querySelector("button[type=submit]");
     btn.disabled = true;
 
-    // [BD-LEE] ← llamada al servidor: consulta la cuenta en MySQL
     api("/api/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -268,7 +214,7 @@ $("lf").addEventListener("submit", function (e) {
 
 $("forgot").onclick = function () {
     toast(
-        "Te enviaremos un enlace de recuperación a tu correo institucional."
+        "La recuperación de contraseña aún no está habilitada."
     );
 };
 
@@ -322,12 +268,6 @@ function enter(s) {
     render();
 }
 
-/* ══════════════════════════════════════════════════════════════════
-   [BD-SESIÓN] CERRAR SESIÓN
-   Endpoint : POST /api/logout
-   No modifica tablas: solo borra las cookies de sesión.
-   Servidor : server/routes/auth.js → router.post('/logout')
-   ══════════════════════════════════════════════════════════════════ */
 $("out").onclick = function () {
     api("/api/logout", { method: "POST" }).catch(function () { });
     sesion = null;
@@ -346,9 +286,9 @@ $("out").onclick = function () {
 $("bell").onclick = function () {
     toast(
         rows[3][4] !== "Pendiente"
-            ? "Tu ticket ya está disponible."
+            ? "La confirmación de la etapa del ticket está registrada."
             : rows[1][4] === "Validado"
-                ? "Tu pago fue validado. El ticket se emitirá al confirmarse."
+                ? "Tu pago simulado está registrado. La emisión del ticket sigue pendiente."
                 : "Aún no registramos el pago de tu inscripción."
     );
 };
@@ -365,7 +305,7 @@ var rows = [
     [
         "P02",
         "Pago de inscripción",
-        "Tasa procesada por pasarela segura",
+        "Registro de pago simulado",
         "—",
         "Pendiente",
         "Descargar comprobante"
@@ -384,7 +324,7 @@ var rows = [
         "QR, aula, pabellón y puerta de ingreso",
         "—",
         "Pendiente",
-        "Descargar ticket"
+        ""
     ]
 ];
 
@@ -421,13 +361,7 @@ function render() {
                 "</td>" +
                 "<td>" +
                 (r[5]
-                    ? '<button class="act" data-m="' +
-                    r[5] +
-                    '"' +
-                    dis +
-                    ">" +
-                    r[5] +
-                    "</button>"
+                    ? '<button class="act" data-action="receipt"' + dis + '>Descargar comprobante</button>'
                     : "—") +
                 "</td>" +
                 "</tr>"
@@ -452,20 +386,29 @@ function render() {
         .join("");
 
     $("hs").innerHTML =
-        '<tr><td><b>Pago</b></td><td>Tasa de inscripción<small>Pasarela segura</small></td><td>' + (rows[1][3]) + '</td><td>' +
+        '<tr><td><b>Pago</b></td><td>Inscripción<small>Pago simulado · S/ ' +
+        (sesion && sesion.payMonto ? Number(sesion.payMonto).toFixed(2) : "400.00") +
+        '</small></td><td>' + esc(rows[1][3]) + '</td><td>' +
         chip(rows[1][4]) +
-        '</td><td><button class="act" data-m="Descargar comprobante"' + (rows[1][4] === "Pendiente" ? " disabled" : "") + '>Comprobante</button></td></tr>' +
+        '</td><td><button class="act" data-action="receipt"' +
+        (rows[1][4] === "Pendiente" ? " disabled" : "") +
+        '>Descargar comprobante</button></td></tr>' +
+        '<tr><td><b>Ticket</b></td><td>Ticket digital<small>Emisión pendiente</small></td><td>—</td><td>' +
+        chip(rows[3][4]) +
+        '</td><td><button class="act" disabled>No disponible</button></td></tr>';
+    var ultimaEtapa = rows.slice().reverse().find(function (r) {
+        return r[4] !== "Pendiente";
+    });
+    var estadoActual = ultimaEtapa ? ultimaEtapa[4] : "Pendiente";
+    $("cur").textContent = estadoActual;
+    $("cur").className = "chip c-" + estadoActual;
+    $("currentStage").textContent = ultimaEtapa
+        ? ultimaEtapa[0] + " · " + ultimaEtapa[1]
+        : "Sin etapas completadas";
 
-        '<tr><td><b>Ticket</b></td><td>Carnet digital con QR<small>Se habilita tras confirmar el pago</small></td><td>—</td><td>' +
-        chip("Pendiente") +
-        '</td><td><button class="act" disabled>Descargar PDF</button></td></tr>';
-
-    document.querySelectorAll("[data-m]").forEach(function (b) {
-        b.onclick = function () {
-            toast(
-                b.dataset.m +
-                ": disponible en la versión con base de datos."
-            );
+    document.querySelectorAll("[data-action='receipt']").forEach(function (button) {
+        button.onclick = function () {
+            generatePaymentReceipt(sesion);
         };
     });
 
@@ -479,17 +422,12 @@ function render() {
         });
 }
 
-/* ══════════════════════════════════════════════════════════════════
-   [BD-LEE] ACTUALIZACIÓN AUTOMÁTICA DEL TABLERO (cada 30 s)
-   Endpoint : GET /api/me
-   Tablas   : postulantes, postulante_etapas, etapas, pagos (solo lectura)
-   Servidor : server/routes/perfil.js → router.get('/me')
-   ══════════════════════════════════════════════════════════════════ */
 setInterval(function () {
     if ($("app").classList.contains("hidden")) return;
 
     api("/api/me")
         .then(function (d) {
+
             var y = window.scrollY;
             enter(adaptar(d));
             window.scrollTo(0, y);
@@ -502,11 +440,6 @@ setInterval(function () {
         });
 }, 30000);
 
-/* ══════════════════════════════════════════════════════════════════
-   [BD-LEE] RECUPERAR SESIÓN AL CARGAR LA PÁGINA
-   Endpoint : GET /api/me   (mismos datos que arriba)
-   Si hay sesión abierta entra directo al portal; si no, muestra el login.
-   ══════════════════════════════════════════════════════════════════ */
 api("/api/me")
     .then(function (d) {
         enter(adaptar(d));
@@ -516,8 +449,8 @@ api("/api/me")
 var RL = /^[a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s]+$/;
 
 function gen() {
-    var n = sinTildes($("rn").value.toLowerCase().trim()),
-        a = sinTildes($("ra").value.toLowerCase().trim()),
+    var n = sinTildes((regData.nombres || $("rn").value).toLowerCase().trim()),
+        a = sinTildes((regData.apellidos || $("ra").value).toLowerCase().trim()),
         d = $("rd").value.trim();
 
     $("ge").textContent =
@@ -557,8 +490,8 @@ function vN(i, m, t) {
     return chk(
         $(i),
         m,
-        RL.test(v) && v.length >= 2,
-        t + " solo debe contener letras (mín. 2)."
+        RL.test(v) && v.length >= 2 && v.length <= 80,
+        t + " debe contener entre 2 y 80 letras."
     );
 }
 
@@ -574,11 +507,14 @@ function vT() {
 }
 
 function vP() {
+    var password = $("rp").value;
+    var bytes = new TextEncoder().encode(password).length;
+
     return chk(
         $("rp"),
         "rpe",
-        $("rp").value.length >= 8,
-        "La contraseña debe tener al menos 8 caracteres."
+        password.length >= 8 && bytes <= 72,
+        "La contraseña debe tener al menos 8 caracteres y no superar 72 bytes."
     );
 }
 
@@ -587,9 +523,28 @@ function vEmail() {
     return chk(
         $("rem"),
         "reme",
-        /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v),
-        "Ingresa un correo electrónico válido."
+        /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) && v.length <= 120,
+        "Ingresa un correo válido de hasta 120 caracteres."
     );
+}
+
+function vImagen(i, m, etiqueta) {
+    var input = $(i);
+    var archivo = input.files[0];
+    var tipos = ["image/jpeg", "image/png", "image/webp"];
+    var error = !archivo
+        ? etiqueta + " es obligatoria."
+        : archivo.size > 5 * 1024 * 1024
+            ? etiqueta + " no debe superar 5 MB."
+            : archivo.type && tipos.indexOf(archivo.type) === -1
+                ? etiqueta + " debe ser JPG, PNG o WEBP."
+                : "";
+
+    input.classList.toggle("err", !!error);
+    input.classList.toggle("ok", !!archivo && !error);
+    $(m).textContent = error || etiqueta + " cargada.";
+    $(m).style.color = error ? "#e5484d" : "var(--ok)";
+    return !error;
 }
 
 $("rn").oninput = function () {
@@ -604,14 +559,6 @@ $("rem").oninput = function () {
     if ($("rem").value) vEmail();
 };
 
-/* ══════════════════════════════════════════════════════════════════
-   [BD-ESCRIBE] REGISTRO · PASO 1 · Datos básicos
-   Endpoint : POST /api/registro/basico
-   Envía    : nombres, apellidos, emailPersonal (JSON)
-   Tablas   : postulantes (INSERT del borrador)
-              postulante_etapas (P01 → Confirmado)
-   Servidor : server/routes/registro.js → "PASO 1"
-   ══════════════════════════════════════════════════════════════════ */
 $("rf1").addEventListener("submit", function (e) {
     e.preventDefault();
 
@@ -624,7 +571,6 @@ $("rf1").addEventListener("submit", function (e) {
     var btn = $("rf1").querySelector("button[type=submit]");
     btn.disabled = true;
 
-    // [BD-ESCRIBE] ← llamada al servidor: guarda el paso 1 en MySQL
     api("/api/registro/basico", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -637,7 +583,6 @@ $("rf1").addEventListener("submit", function (e) {
         .then(function (d) {
             regData.nombres = cap($("rn").value);
             regData.apellidos = cap($("ra").value);
-            regData.emailPersonal = $("rem").value.trim().toLowerCase();
 
             if (d.pagado) {
                 toast("Ya registramos tu pago. Completa tu verificación.");
@@ -658,82 +603,21 @@ $("rf1").addEventListener("submit", function (e) {
         });
 });
 
-$("pcard").oninput = function () {
-    var v = $("pcard").value.replace(/\D/g, "");
-    var formatted = v.replace(/(.{4})/g, "$1 ").trim();
-    $("pcard").value = formatted;
-};
-
-$("pexp").oninput = function () {
-    var v = $("pexp").value.replace(/\D/g, "");
-    if (v.length >= 2) {
-        $("pexp").value = v.slice(0, 2) + "/" + v.slice(2, 4);
-    } else {
-        $("pexp").value = v;
-    }
-};
-
-$("pcvv").oninput = function () {
-    $("pcvv").value = $("pcvv").value.replace(/\D/g, "");
-};
-
-/* ══════════════════════════════════════════════════════════════════
-   [SIN BD] Botón "Procesar pago"
-   Solo valida el formato de la tarjeta y arranca la animación de progreso.
-   Los datos de tarjeta NUNCA se envían ni se guardan. El registro del pago
-   en la base de datos ocurre al final de la animación (ver nextStage()).
-   ══════════════════════════════════════════════════════════════════ */
 $("payBtn").onclick = function () {
-    var card = $("pcard").value.replace(/\s/g, ""),
-        exp = $("pexp").value,
-        cvv = $("pcvv").value,
-        ok = true;
-
-    if (card.length < 13) {
-        $("pcarde").textContent = "Número de tarjeta inválido.";
-        $("pcard").classList.add("err");
-        ok = false;
-    } else {
-        $("pcarde").textContent = "";
-        $("pcard").classList.remove("err");
-    }
-
-    if (!/^\d{2}\/\d{2}$/.test(exp)) {
-        $("pexpe").textContent = "Formato MM/AA.";
-        $("pexp").classList.add("err");
-        ok = false;
-    } else {
-        $("pexpe").textContent = "";
-        $("pexp").classList.remove("err");
-    }
-
-    if (cvv.length < 3) {
-        $("pcvve").textContent = "CVV inválido.";
-        $("pcvv").classList.add("err");
-        ok = false;
-    } else {
-        $("pcvve").textContent = "";
-        $("pcvv").classList.remove("err");
-    }
-
-    if (!ok) return;
-
     $("payBtn").disabled = true;
-    $("payBtn").textContent = "Procesando...";
-
+    $("payBtn").textContent = "Registrando...";
     setTimeout(function () {
         document.querySelector(".pay-container").classList.add("hidden");
         $("payProgress").classList.remove("hidden");
         runPaymentProgress();
-    }, 600);
+    }, 300);
 };
-
 function reiniciarPago() {
     document.querySelector(".pay-container").classList.remove("hidden");
     $("payProgress").classList.add("hidden");
 
     $("payBtn").disabled = false;
-    $("payBtn").textContent = "Procesar pago S/ 400.00";
+    $("payBtn").textContent = "Simular pago S/ 400.00";
 
     $("pbar").style.width = "0%";
     $("pstatus").textContent = "Iniciando...";
@@ -744,21 +628,12 @@ function reiniciarPago() {
     });
 }
 
-/* ══════════════════════════════════════════════════════════════════
-   [BD-ESCRIBE] REGISTRO · PASO 2 · Pago de inscripción
-   Se ejecuta al terminar la animación (dentro de nextStage()).
-   Endpoint : POST /api/registro/pago   (sin cuerpo: no envía datos de tarjeta)
-   Tablas   : pagos (INSERT: referencia, monto, estado)
-              postulante_etapas (P02 → Validado)
-   El monto y la referencia los define el SERVIDOR, no este archivo.
-   Servidor : server/routes/registro.js → "PASO 2"
-   ══════════════════════════════════════════════════════════════════ */
 function runPaymentProgress() {
     var stages = [
-        { id: "ps1", label: "Conexión con pasarela", pct: 25 },
-        { id: "ps2", label: "Verificación de fondos", pct: 50 },
-        { id: "ps3", label: "Autorización del banco", pct: 75 },
-        { id: "ps4", label: "Generación de comprobante", pct: 100 }
+        { id: "ps1", label: "Inicio de simulación", pct: 25 },
+        { id: "ps2", label: "Registro del pago", pct: 50 },
+        { id: "ps3", label: "Confirmación del estado", pct: 75 },
+        { id: "ps4", label: "Preparación del comprobante", pct: 100 }
     ];
 
     var current = 0;
@@ -767,19 +642,11 @@ function runPaymentProgress() {
         if (current >= stages.length) {
             $("pstatus").textContent = "Registrando el pago...";
 
-            // [BD-ESCRIBE] ← llamada al servidor: guarda el pago en MySQL
-            // No se envían datos de tarjeta: el servidor fija el monto y genera la referencia
             api("/api/registro/pago", { method: "POST" })
-                .then(function (p) {
-                    $("pstatus").textContent = "Pago procesado exitosamente";
+                .then(function () {
+                    $("pstatus").textContent = "Pago simulado registrado correctamente";
                     $("pstatus").style.color = "var(--ok)";
 
-                    regData.payDate = fecha(p.fecha);
-                    regData.payRef = p.referencia;
-
-                    $("pcard").value = "";
-                    $("pexp").value = "";
-                    $("pcvv").value = "";
 
                     setTimeout(function () {
                         wizardStep(3);
@@ -824,49 +691,23 @@ $("rp").oninput = function () {
     if ($("rp").value) vP();
 };
 
-/* ══════════════════════════════════════════════════════════════════
-   [BD-ESCRIBE] REGISTRO · PASO 3 · Verificación y creación de la cuenta
-   Endpoint : POST /api/registro/completar
-   Envía    : FormData → dni, telefono, password, foto, dni_frente, dni_reverso
-   Tablas   : postulantes (UPDATE: DNI, teléfono, correo institucional,
-                           contraseña cifrada, nombres de los archivos)
-              postulante_etapas (P03 → Confirmado)
-   Archivos : las 3 imágenes se guardan en la carpeta uploads/
-   Servidor : server/routes/registro.js → "PASO 3"
-   ══════════════════════════════════════════════════════════════════ */
+["rph", "rdni_front", "rdni_back"].forEach(function (id) {
+    $(id).onchange = function () {
+        var messages = { rph: "La foto", rdni_front: "La foto frontal del DNI", rdni_back: "La foto del reverso del DNI" };
+        var messageIds = { rph: "rphe", rdni_front: "rdni_fronte", rdni_back: "rdni_backe" };
+        vImagen(id, messageIds[id], messages[id]);
+    };
+});
+
 $("rf3").addEventListener("submit", function (e) {
     e.preventDefault();
 
     var a = vD(),
         t = vT(),
         d = vP(),
-        f = $("rph").files.length > 0,
-        df = $("rdni_front").files.length > 0,
-        db = $("rdni_back").files.length > 0;
-
-    $("rphe").textContent = f
-        ? "Foto cargada."
-        : "La foto es obligatoria.";
-
-    $("rphe").style.color = f
-        ? "var(--ok)"
-        : "#e5484d";
-
-    $("rdni_fronte").textContent = df
-        ? "Foto frontal cargada."
-        : "La foto frontal del DNI es obligatoria.";
-
-    $("rdni_fronte").style.color = df
-        ? "var(--ok)"
-        : "#e5484d";
-
-    $("rdni_backe").textContent = db
-        ? "Foto reverso cargada."
-        : "La foto del reverso del DNI es obligatoria.";
-
-    $("rdni_backe").style.color = db
-        ? "var(--ok)"
-        : "#e5484d";
+        f = vImagen("rph", "rphe", "La foto"),
+        df = vImagen("rdni_front", "rdni_fronte", "La foto frontal del DNI"),
+        db = vImagen("rdni_back", "rdni_backe", "La foto del reverso del DNI");
 
     if (!(a && t && d && f && df && db)) return;
 
@@ -885,7 +726,6 @@ $("rf3").addEventListener("submit", function (e) {
     var btn = $("rf3").querySelector("button[type=submit]");
     btn.disabled = true;
 
-    // [BD-ESCRIBE] ← llamada al servidor: completa el registro en MySQL
     api("/api/registro/completar", { method: "POST", body: fd })
         .then(function (d) {
             var s = adaptar(d);
@@ -924,9 +764,22 @@ $("rf3").addEventListener("submit", function (e) {
         });
 });
 
+function writePdfField(doc, label, value, xLabel, xValue, y, width, lineHeight) {
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(107, 115, 133);
+    doc.text(label + ":", xLabel, y);
+
+    var lines = doc.splitTextToSize(String(value), width);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(29, 36, 51);
+    doc.text(lines, xValue, y);
+
+    return y + Math.max(lines.length, 1) * lineHeight;
+}
+
 function generatePDF(s) {
-    if (typeof window.jspdf === "undefined") {
-        toast("Cargando generador de PDF...");
+    if (!window.jspdf || !window.jspdf.jsPDF) {
+        toast("No se pudo cargar el generador de PDF. Comprueba tu conexión e inténtalo de nuevo.");
         return;
     }
 
@@ -962,8 +815,6 @@ function generatePDF(s) {
     doc.line(20, y, 190, y);
     y += 10;
 
-    doc.setFontSize(11);
-
     var fields = [
         ["DNI", s.dni],
         ["Nombres", s.nombres],
@@ -975,15 +826,9 @@ function generatePDF(s) {
         ["Código postulante", "UNP-" + s.dni.slice(-4) + "-27"]
     ];
 
+    doc.setFontSize(11);
     fields.forEach(function (f) {
-        doc.setFont("helvetica", "bold");
-        doc.setTextColor(107, 115, 133);
-        doc.text(f[0] + ":", 20, y);
-
-        doc.setFont("helvetica", "normal");
-        doc.setTextColor(29, 36, 51);
-        doc.text(String(f[1]), 80, y);
-        y += 8;
+        y = writePdfField(doc, f[0], f[1], 20, 80, y, 108, 8);
     });
 
     y += 6;
@@ -1004,21 +849,18 @@ function generatePDF(s) {
         ["Referencia", s.payRef || "—"],
         ["Fecha de pago", s.payDate || "—"],
         ["Monto", "S/ " + (s.payMonto || "400.00")],
-        ["Estado", "Validado"]
+        ["Estado", "Validado (pago simulado)"]
     ];
 
     payFields.forEach(function (f) {
-        doc.setFont("helvetica", "bold");
-        doc.setTextColor(107, 115, 133);
-        doc.text(f[0] + ":", 20, y);
-
-        doc.setFont("helvetica", "normal");
-        doc.setTextColor(29, 36, 51);
-        doc.text(String(f[1]), 80, y);
-        y += 8;
+        y = writePdfField(doc, f[0], f[1], 20, 80, y, 108, 8);
     });
 
     y += 6;
+    if (y > 194) {
+        doc.addPage();
+        y = 24;
+    }
 
     doc.setFontSize(14);
     doc.setFont("helvetica", "bold");
@@ -1074,7 +916,55 @@ function generatePDF(s) {
     doc.save("ficha_registro_UNP_" + s.dni + ".pdf");
 }
 
-// [SIN BD] Genera el PDF en el navegador (jsPDF) con los datos ya cargados en "sesion".
+function generatePaymentReceipt(s) {
+    if (!s || !s.payRef) {
+        toast("No se encontró un pago para descargar.");
+        return;
+    }
+    if (!window.jspdf || !window.jspdf.jsPDF) {
+        toast("No se pudo cargar el generador de PDF. Comprueba tu conexión e inténtalo de nuevo.");
+        return;
+    }
+
+    var doc = new window.jspdf.jsPDF();
+    doc.setFillColor(30, 55, 90);
+    doc.rect(0, 0, 210, 42, "F");
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(20);
+    doc.setFont("helvetica", "bold");
+    doc.text("Universidad Nacional de Piura", 105, 17, { align: "center" });
+    doc.setFontSize(13);
+    doc.setFont("helvetica", "normal");
+    doc.text("Comprobante de pago de inscripción", 105, 29, { align: "center" });
+
+    doc.setTextColor(29, 36, 51);
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "bold");
+    doc.text("Datos del postulante", 20, 61);
+    doc.setDrawColor(239, 90, 99);
+    doc.line(20, 66, 190, 66);
+
+    var fields = [
+        ["Nombres", s.nombres + " " + s.apellidos],
+        ["DNI", s.dni],
+        ["Correo institucional", s.email],
+        ["Referencia", s.payRef],
+        ["Fecha", s.payDate || "—"],
+        ["Monto", "S/ " + Number(s.payMonto || 400).toFixed(2)],
+        ["Estado", "Validado (pago simulado)"]
+    ];
+
+    var y = 80;
+    fields.forEach(function (field) {
+        y = writePdfField(doc, field[0], field[1], 22, 75, y, 113, 11);
+    });
+
+    doc.setFontSize(9);
+    doc.setTextColor(107, 115, 133);
+    doc.text("Este documento acredita un registro de demostración y no un cobro real.", 105, y + 10, { align: "center" });
+    doc.save("comprobante_pago_UNP_" + s.dni + ".pdf");
+}
+
 $("pdfBtn").onclick = function () {
     if (sesion) {
         generatePDF(sesion);

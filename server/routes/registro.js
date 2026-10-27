@@ -17,10 +17,9 @@ const router = express.Router();
 const MB = 1024 * 1024;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-// Los archivos llegan en memoria, se validan y recién entonces se escriben a disco
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 8 * MB, files: 3 }
+  limits: { fileSize: 5 * MB, files: 3 }
 }).fields([
   { name: 'foto', maxCount: 1 },
   { name: 'dni_frente', maxCount: 1 },
@@ -36,9 +35,6 @@ async function pagoDe(id) {
   return rows[0] || null;
 }
 
-/* =========================================================
-   PASO 1 · Datos básicos  (crea o retoma el borrador)
-   ========================================================= */
 router.post('/registro/basico', limiters.registro, async (req, res, next) => {
   try {
     const b = req.body || {};
@@ -75,7 +71,6 @@ router.post('/registro/basico', limiters.registro, async (req, res, next) => {
           [nombres, apellidos, emailPersonal]
         );
         id = r.insertId;
-        // P01 queda confirmada; el resto pendiente
         await conn.query(
           `INSERT INTO postulante_etapas (postulante_id, etapa_codigo, estado, fecha)
            SELECT ?, codigo, IF(codigo = 'P01', 'Confirmado', 'Pendiente'), IF(codigo = 'P01', CURDATE(), NULL)
@@ -92,7 +87,6 @@ router.post('/registro/basico', limiters.registro, async (req, res, next) => {
     } else if (previo.registro_completo) {
       return res.status(409).json({ error: 'Ya existe una cuenta con ese correo. Inicia sesión.' });
     } else {
-      // Borrador existente: solo se retoma si es del mismo navegador (cookie) o si aún no tiene pago
       const dueño = leer(req.cookies && req.cookies.registro, 'registro') === previo.id;
       if (!dueño && (await pagoDe(previo.id))) {
         return res.status(409).json({
@@ -111,12 +105,6 @@ router.post('/registro/basico', limiters.registro, async (req, res, next) => {
   }
 });
 
-/* =========================================================
-   PASO 2 · Pago (SIMULADO)
-   No recibe datos de tarjeta. El monto lo fija el servidor.
-   Con una pasarela real (Culqi, Niubiz, Izipay...) el pago se
-   confirmaría por el webhook de la pasarela, no por esta llamada.
-   ========================================================= */
 function generarReferencia() {
   const d = new Date();
   const p = (n) => String(n).padStart(2, '0');
@@ -130,7 +118,7 @@ router.post('/registro/pago', limiters.registro, requireRegistro, async (req, re
     if (!p[0]) return res.status(401).json({ error: 'Tu registro expiró. Vuelve a empezar desde el paso 1.' });
     if (p[0].registro_completo) return res.status(409).json({ error: 'Tu registro ya está completo.' });
 
-    let pago = await pagoDe(id); // idempotente: si ya pagó, devuelve el mismo pago
+    let pago = await pagoDe(id);
     for (let intento = 0; !pago && intento < 5; intento++) {
       const conn = await pool.getConnection();
       try {
@@ -148,7 +136,6 @@ router.post('/registro/pago', limiters.registro, requireRegistro, async (req, re
         await conn.commit();
       } catch (e) {
         await conn.rollback();
-        // referencia repetida: reintenta; doble clic (ya existe el pago): sigue
         if (e.code !== 'ER_DUP_ENTRY') throw e;
       } finally {
         conn.release();
@@ -162,9 +149,6 @@ router.post('/registro/pago', limiters.registro, requireRegistro, async (req, re
   }
 });
 
-/* =========================================================
-   PASO 3 · Registro completo (DNI, fotos, contraseña)
-   ========================================================= */
 router.post('/registro/completar', limiters.registro, requireRegistro, upload, async (req, res, next) => {
   const guardados = [];
   try {
@@ -188,8 +172,8 @@ router.post('/registro/completar', limiters.registro, requireRegistro, upload, a
     if (!/^\d{8}$/.test(dni)) errores.dni = 'El DNI debe tener exactamente 8 dígitos.';
     if (telefono !== '' && !/^9\d{8}$/.test(telefono))
       errores.telefono = 'El teléfono debe tener 9 dígitos y empezar con 9.';
-    if (password.length < 8 || password.length > 72)
-      errores.password = 'La contraseña debe tener entre 8 y 72 caracteres.';
+    if (password.length < 8 || Buffer.byteLength(password, 'utf8') > 72)
+      errores.password = 'La contraseña debe tener al menos 8 caracteres y no superar 72 bytes.';
 
     const imagenes = {};
     [
@@ -211,7 +195,6 @@ router.post('/registro/completar', limiters.registro, requireRegistro, upload, a
     const [dup] = await pool.execute('SELECT id FROM postulantes WHERE dni = ?', [dni]);
     if (dup.length) return res.status(409).json({ error: 'Ya existe una cuenta registrada con ese DNI. Inicia sesión.' });
 
-    // Correo institucional (si ya existe por coincidencia, se agrega un número)
     let email = generarEmail(borrador.nombres, borrador.apellidos, dni);
     const base = email.split('@')[0];
     for (let n = 2; ; n++) {
@@ -220,7 +203,6 @@ router.post('/registro/completar', limiters.registro, requireRegistro, upload, a
       email = `${base}${n}@alumnos.unp.edu.pe`;
     }
 
-    // Guardar archivos con nombres aleatorios, fuera de la carpeta pública
     const nombres = {};
     for (const campo of Object.keys(imagenes)) {
       const archivo = `${crypto.randomBytes(16).toString('hex')}.${imagenes[campo].tipo}`;
@@ -243,7 +225,6 @@ router.post('/registro/completar', limiters.registro, requireRegistro, upload, a
         [dni, telefono || null, email, hash, nombres.foto, nombres.dni_frente, nombres.dni_reverso, id]
       );
       if (r.affectedRows !== 1) throw Object.assign(new Error('yaCompleto'), { code: 'YA_COMPLETO' });
-      // P03 queda "Confirmado"; pasa a "Validado" cuando el administrador verifica el DNI
       await conn.execute(
         `UPDATE postulante_etapas SET estado = 'Confirmado', fecha = CURDATE()
           WHERE postulante_id = ? AND etapa_codigo = 'P03'`,

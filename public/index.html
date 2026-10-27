@@ -65,14 +65,14 @@
               <span>Los datos ingresados deben coincidir exactamente con tu DNI.</span>
             </div>
             <div class="two">
-              <div class="field"><label>Nombres</label><input class="plain" id="rn" placeholder="Según tu DNI">
+              <div class="field"><label>Nombres</label><input class="plain" id="rn" maxlength="80" placeholder="Según tu DNI">
                 <div class="msg" id="rne"></div>
               </div>
-              <div class="field"><label>Apellidos</label><input class="plain" id="ra" placeholder="Según tu DNI">
+              <div class="field"><label>Apellidos</label><input class="plain" id="ra" maxlength="80" placeholder="Según tu DNI">
                 <div class="msg" id="rae"></div>
               </div>
             </div>
-            <div class="field"><label>Correo electrónico personal</label><input class="plain" id="rem" type="email"
+            <div class="field"><label>Correo electrónico personal</label><input class="plain" id="rem" type="email" maxlength="120"
                 placeholder="tucorreo@ejemplo.com">
               <div class="msg" id="reme"></div>
             </div>
@@ -87,8 +87,8 @@
                   <path d="M2 10h20" />
                 </svg>
                 <div>
-                  <h3>Pasarela de Pago</h3>
-                  <p>Tasa de inscripción · Admisión 2027-I</p>
+                  <h3>Pago de inscripción (simulado)</h3>
+                  <p>Demostración de inscripción · Admisión 2027-I</p>
                 </div>
               </div>
               <div class="pay-summary">
@@ -96,31 +96,17 @@
                 <div class="pay-row"><span>Carpeta de postulante</span><b>S/ 50.00</b></div>
                 <div class="pay-row total"><span>Total a pagar</span><b>S/ 400.00</b></div>
               </div>
-              <div class="field"><label>Número de tarjeta</label><input class="plain" id="pcard" maxlength="19"
-                  inputmode="numeric" placeholder="0000 0000 0000 0000">
-                <div class="msg" id="pcarde"></div>
-              </div>
-              <div class="two">
-                <div class="field"><label>Vencimiento</label><input class="plain" id="pexp" maxlength="5"
-                    placeholder="MM/AA">
-                  <div class="msg" id="pexpe"></div>
-                </div>
-                <div class="field"><label>CVV</label><input class="plain" id="pcvv" maxlength="4" inputmode="numeric"
-                    placeholder="•••">
-                  <div class="msg" id="pcvve"></div>
-                </div>
-              </div>
-              <button class="btn" type="button" id="payBtn">Procesar pago S/ 400.00</button>
+              <button class="btn" type="button" id="payBtn">Simular pago S/ 400.00</button>
               <div class="note"><svg class="i" style="width:15px;height:15px" viewBox="0 0 24 24">
                   <rect x="4" y="11" width="16" height="10" rx="2" />
                   <path d="M8 11V7a4 4 0 018 0v4" />
-                </svg>Pago simulado. No se almacenan datos de tarjeta.</div>
+                </svg>Demostración: no se procesa un pago real ni se necesitan datos de tarjeta.</div>
             </div>
 
             <div id="payProgress" class="hidden">
               <div class="progress-card">
-                <h3>Validación de Pago</h3>
-                <p>Procesando tu transacción de forma segura</p>
+                <h3>Registro de pago simulado</h3>
+                <p>Registrando el pago de demostración</p>
                 <div class="progress-bar-wrap">
                   <div class="progress-bar" id="pbar"></div>
                 </div>
@@ -135,19 +121,19 @@
                     </thead>
                     <tbody id="ptbody">
                       <tr id="ps1">
-                        <td>Conexión con pasarela</td>
+                        <td>Inicio de simulación</td>
                         <td><span class="chip c-Pendiente">Pendiente</span></td>
                       </tr>
                       <tr id="ps2">
-                        <td>Verificación de fondos</td>
+                        <td>Registro del pago</td>
                         <td><span class="chip c-Pendiente">Pendiente</span></td>
                       </tr>
                       <tr id="ps3">
-                        <td>Autorización del banco</td>
+                        <td>Confirmación del estado</td>
                         <td><span class="chip c-Pendiente">Pendiente</span></td>
                       </tr>
                       <tr id="ps4">
-                        <td>Generación de comprobante</td>
+                        <td>Preparación del comprobante</td>
                         <td><span class="chip c-Pendiente">Pendiente</span></td>
                       </tr>
                     </tbody>
@@ -182,21 +168,21 @@
               </svg>
               <div><small>Tu correo institucional asignado</small><b id="ge">---@alumnos.unp.edu.pe</b></div>
             </div>
-            <div class="field"><label>Crear contraseña</label><input class="plain" id="rp" type="password"
-                placeholder="Mínimo 8 caracteres">
+            <div class="field"><label>Crear contraseña</label><input class="plain" id="rp" type="password" maxlength="72"
+                placeholder="Mínimo 8 caracteres; máximo 72 bytes">
               <div class="msg" id="rpe"></div>
             </div>
             <div class="field"><label>Foto para ticket de postulante</label><input class="plain" id="rph" type="file"
-                accept="image/*">
+                accept="image/jpeg,image/png,image/webp">
               <div class="msg" id="rphe" style="color:var(--mute)">Foto frontal clara; se usará el día del examen.</div>
             </div>
             <div class="field">
               <label>Foto de DNI (frontal y reverso)</label>
-              <input class="plain" id="rdni_front" type="file" accept="image/*">
+              <input class="plain" id="rdni_front" type="file" accept="image/jpeg,image/png,image/webp">
               <div class="msg" id="rdni_fronte" style="color:var(--mute)">Sube la foto frontal de tu DNI</div>
             </div>
             <div class="field">
-              <input class="plain" id="rdni_back" type="file" accept="image/*">
+              <input class="plain" id="rdni_back" type="file" accept="image/jpeg,image/png,image/webp">
               <div class="msg" id="rdni_backe" style="color:var(--mute)">Sube la foto del reverso de tu DNI</div>
             </div>
             <div class="dni-notice verify-notice">
@@ -223,7 +209,7 @@
             <button class="ib" id="bell" aria-label="Notificaciones"><svg class="i" viewBox="0 0 24 24">
                 <path d="M6 8a6 6 0 0112 0c0 7 3 9 3 9H3s3-2 3-9M10 21a2 2 0 004 0" />
               </svg></button>
-            <button class="ib" id="pdfBtn" aria-label="Descargar PDF"><svg class="i" viewBox="0 0 24 24">
+            <button class="ib" id="pdfBtn" aria-label="Descargar ficha de registro"><svg class="i" viewBox="0 0 24 24">
                 <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
                 <polyline points="14 2 14 8 20 8" />
                 <line x1="12" y1="18" x2="12" y2="12" />
@@ -253,8 +239,7 @@
           <div class="row" style="margin:0 0 8px">
             <h3>Estado de la postulación</h3><span class="live"><i></i><span id="up">En tiempo real</span></span>
           </div>
-          <p class="sub">Estado actual: <span class="chip c-Validado" id="cur">Validado</span> · Tablero de seguimiento
-            (P05)</p>
+          <p class="sub">Última etapa registrada: <span id="currentStage">—</span> · Estado: <span class="chip c-Pendiente" id="cur">Pendiente</span></p>
           <div class="steps" id="steps"></div>
           <div class="tw" style="margin-top:14px">
             <table>
@@ -273,12 +258,12 @@
           <div class="note"><svg class="i" style="width:15px;height:15px" viewBox="0 0 24 24">
               <rect x="4" y="11" width="16" height="10" rx="2" />
               <path d="M8 11V7a4 4 0 018 0v4" />
-            </svg>Nunca se muestran datos de tarjeta. Pagos procesados por pasarela segura (PCI-DSS).</div>
+            </svg>Este portal registra pagos simulados; no procesa pagos reales ni requiere datos de tarjeta.</div>
         </div>
 
         <div class="sec card">
           <h3>Historial de pagos y tickets</h3>
-          <p class="sub">Consulta tus comprobantes y tu ticket digital con QR.</p>
+          <p class="sub">Descarga el comprobante del pago simulado y consulta el estado del ticket.</p>
           <div class="tw">
             <table>
               <thead>
@@ -300,7 +285,7 @@
             <path d="M2 10h20" />
           </svg>
           <div><b>¿Pago pendiente de verificación?</b>
-            <p>Tu ticket se habilita solo tras la confirmación del pago.</p>
+            <p>La emisión del ticket se anunciará cuando esté disponible.</p>
           </div>
         </div>
       </div>

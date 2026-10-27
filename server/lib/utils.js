@@ -1,5 +1,3 @@
-// Funciones puras (sin dependencias externas)
-
 const RL = /^[a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s]+$/;
 
 function cap(t) {
@@ -14,14 +12,12 @@ function sinTildes(s) {
   return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 }
 
-// Misma regla que usaba el frontend: inicial + primer apellido + últimos 4 del DNI
 function generarEmail(nombres, apellidos, dni) {
   const n = sinTildes(nombres.toLowerCase().trim());
   const a = sinTildes(apellidos.toLowerCase().trim().split(/\s+/)[0]);
   return (n[0] + a + dni.slice(-4) + '@alumnos.unp.edu.pe').replace(/\s/g, '');
 }
 
-// Detecta el tipo real del archivo por sus primeros bytes (no confía en la extensión)
 function detectarTipo(buf) {
   if (!buf || buf.length < 12) return null;
   if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'jpg';

@@ -20,7 +20,7 @@ Portal de admisión con **Node.js + Express + MySQL**. El frontend (HTML/CSS/JS)
 | Paso | Pantalla | Endpoint | Qué guarda |
 |------|----------|----------|-----------|
 | 1 | Datos básicos | `POST /api/registro/basico` | Nombres, apellidos, correo personal (borrador) · P01 Confirmado |
-| 2 | Pasarela de pago | `POST /api/registro/pago` | Pago simulado (referencia y monto los fija el servidor) · P02 Validado |
+| 2 | Pago simulado | `POST /api/registro/pago` | Pago simulado (referencia y monto los fija el servidor) · P02 Validado |
 | 3 | Verificación | `POST /api/registro/completar` | DNI, teléfono, contraseña (bcrypt), foto, DNI frente y reverso · P03 Confirmado · crea el correo institucional e inicia sesión |
 
 Entre los pasos 1 y 3 el navegador lleva una cookie temporal `registro` (24 h). Si el postulante
@@ -54,9 +54,7 @@ uploads/           Fotos y DNI subidos (no se versiona ni es público)
 
 ```sql
 USE portal_unp;
--- Ver postulantes con registro completo y sus archivos
 SELECT id, nombres, apellidos, dni, email FROM postulantes WHERE registro_completo = 1;
--- Marcar la identidad como verificada (P03 -> Validado)
 UPDATE postulante_etapas SET estado='Validado', fecha=CURDATE()
  WHERE postulante_id=1 AND etapa_codigo='P03';
 ```

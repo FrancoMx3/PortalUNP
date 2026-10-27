@@ -1,4 +1,3 @@
-// Crea la base de datos (si no existe) y las tablas. Uso: npm run db:init
 const fs = require('fs');
 const path = require('path');
 const mysql = require('mysql2/promise');

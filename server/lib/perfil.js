@@ -1,6 +1,5 @@
 const pool = require('../db/pool');
 
-// Datos del postulante + estado de sus etapas + pago
 async function cargarPerfil(id) {
   const [rows] = await pool.execute(
     `SELECT id, dni, nombres, apellidos, telefono, email,
