@@ -1,0 +1,3 @@
+Inicia MySQL y ejecuta `npm run db:init` para preparar la base de datos.
+Inicia el portal con `npm start` y abre http://localhost:3000.
+En PowerShell puedes usar `npm.cmd start` si la política de ejecución bloquea npm.ps1.
