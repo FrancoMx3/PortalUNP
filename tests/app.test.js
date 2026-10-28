@@ -72,6 +72,16 @@ test('la vista, las rutas y las cookies conservan el flujo HTTP del portal', asy
   const sinSesion = await fetch(`${base}/api/me`);
   assert.equal(sinSesion.status, 401);
 
+  const solicitudGrande = await fetch(`${base}/api/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ datos: 'x'.repeat(100 * 1024) })
+  });
+  assert.equal(solicitudGrande.status, 413);
+  assert.deepEqual(await solicitudGrande.json(), {
+    error: 'La solicitud supera el tamaño máximo permitido.'
+  });
+
   const desconocida = await fetch(`${base}/api/no-existe`);
   assert.equal(desconocida.status, 404);
   assert.deepEqual(await desconocida.json(), { error: 'Ruta no encontrada.' });
