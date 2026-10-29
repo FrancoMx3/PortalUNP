@@ -2,6 +2,14 @@
 
 Portal de admisión con Node.js, Express y MySQL. La interfaz se sirve desde `server/views/`.
 
+# Integrantes
+
+- Tavara García Jesús
+- Rivas Rivas Ricardo Emmanuel
+- Ivan Yamil Jaramillo Nuñez
+- Franco Manuel Mendoza Mendoza
+- Aldair Emmanuel Alvarado Facundo
+
 ## Puesta en marcha
 
 1. Instala las dependencias con `npm install`.
